@@ -417,3 +417,5 @@ FodyWeavers.xsd
 /resource_builder/bin
 /resource_builder/obj
 /resource_builder/.vs
+/dist
+/build-macos

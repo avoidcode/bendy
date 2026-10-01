@@ -1,6 +1,7 @@
 #include "State.h"
 #include "StreamWrapper.h"
 #include "Preset.h"
+#include <cstdint>
 
 int kVersionMajor = 2;
 int kVersionMinor = 0;

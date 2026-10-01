@@ -3,6 +3,32 @@
 #include "fp_def.h"
 #include <vector>
 #include <cassert>
+#include <cfloat>
+
+#ifdef __APPLE__
+// Provided by <objidl.h> on Windows. The SDK's Apple shim omits them.
+#ifndef STREAM_SEEK_SET
+#define STREAM_SEEK_SET 0
+#endif
+#ifndef STREAM_SEEK_CUR
+#define STREAM_SEEK_CUR 1
+#endif
+#ifndef STREAM_SEEK_END
+#define STREAM_SEEK_END 2
+#endif
+#ifndef S_OK
+#define S_OK 0
+#endif
+#endif
+
+// The SDK's Apple shim typedefs LARGE_INTEGER/ULARGE_INTEGER to plain 64-bit
+// integers (no .QuadPart member), unlike the Win32 structs.
+#ifdef __APPLE__
+#define LARGE_INT_VALUE(x) (x)
+#else
+#define LARGE_INT_VALUE(x) ((x).QuadPart)
+#endif
+
 
 StreamWrapper::StreamWrapper(IStream* data)
 {
@@ -12,24 +38,24 @@ StreamWrapper::StreamWrapper(IStream* data)
 void StreamWrapper::advance(int bytes)
 {
 	LARGE_INTEGER li;
-	li.QuadPart = bytes;
+	LARGE_INT_VALUE(li) = bytes;
 	_stream->Seek(li, STREAM_SEEK_CUR, 0);
 }
 
 int StreamWrapper::getPosition()
 {
 	LARGE_INTEGER li;
-	li.QuadPart = 0;
+	LARGE_INT_VALUE(li) = 0;
 
 	ULARGE_INTEGER pos;
 	_stream->Seek(li, STREAM_SEEK_CUR, &pos);
-	return (int)pos.QuadPart;
+	return (int)LARGE_INT_VALUE(pos);
 }
 
 void StreamWrapper::setPosition(int bytes)
 {
 	LARGE_INTEGER li;
-	li.QuadPart = bytes;
+	LARGE_INT_VALUE(li) = bytes;
 	_stream->Seek(li, STREAM_SEEK_SET, 0);
 }
 

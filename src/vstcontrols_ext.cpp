@@ -4,6 +4,25 @@
 #include "Plugin.h"
 #include "../resource.h"
 #include <mutex>
+#include <cstdio>
+#include <climits>
+#include <cwchar>
+
+#ifdef __APPLE__
+#include <algorithm>
+#ifndef _countof
+#define _countof(a) (sizeof(a) / sizeof(*(a)))
+#endif
+// wchar_t is 32-bit on macOS, so WCHAR_MAX/4 would be huge; a 16-bit table is
+// plenty for the glyph set used by the BIOS font.
+static const int kCharacterMapSize = 65536;
+static void _itoa(int value, char* buffer, int base)
+{
+	snprintf(buffer, 32, (base == 10) ? "%d" : "%x", value);
+}
+#else
+static const int kCharacterMapSize = WCHAR_MAX / 4;
+#endif
 
 CBitmapNumber::CBitmapNumber(const CRect& firstLetterSize, CFrame* frame, CBitmap* numberImage, int digits, bool vertical)
 	: CViewContainer(CRect(firstLetterSize.getTopLeft(), vertical ? CPoint(firstLetterSize.getWidth(), (firstLetterSize.getHeight() + sScaleFactor) * digits) : CPoint((firstLetterSize.getWidth() + sScaleFactor) * digits, firstLetterSize.getHeight())), frame)
@@ -167,8 +186,8 @@ CBitmapText::CBitmapText(PluginGUI* plugin, const CRect& size, const CPoint& let
 	_charmapMutex.lock();
 	if (_characterMap == nullptr)
 	{
-		_characterMap = new int[WCHAR_MAX / 4];
-		for (wchar_t i = 0; i < WCHAR_MAX / 4; i++)
+		_characterMap = new int[kCharacterMapSize];
+		for (wchar_t i = 0; i < kCharacterMapSize; i++)
 		{
 			_characterMap[i] = '[';
 			for (int iChar = 0; iChar < _countof(_characters); iChar++)

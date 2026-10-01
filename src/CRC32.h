@@ -1,7 +1,13 @@
 /* Crc - 32 BIT ANSI X3.66 CRC checksum files */
 
 #include <stdio.h>
+#ifdef __APPLE__
+#include <stdint.h>
+typedef uint32_t DWORD;
+typedef unsigned char BYTE;
+#else
 #include <windows.h>
+#endif
 
 #ifdef __TURBOC__
 #pragma warn -cln
@@ -125,9 +131,9 @@ DWORD updateCRC32(unsigned char ch, DWORD crc)
 
 bool crc32file(char* name, DWORD* crc, long* charcnt)
 {
-    register FILE* fin;
-    register DWORD oldcrc32;
-    register int c;
+    FILE* fin;
+    DWORD oldcrc32;
+    int c;
 
     oldcrc32 = 0xFFFFFFFF; *charcnt = 0;
 #ifdef MSDOS
@@ -159,7 +165,7 @@ bool crc32file(char* name, DWORD* crc, long* charcnt)
 
 DWORD crc32buf(char* buf, size_t len)
 {
-    register DWORD oldcrc32;
+    DWORD oldcrc32;
 
     oldcrc32 = 0xFFFFFFFF;
 

@@ -1,4 +1,5 @@
 #pragma once
+#include "PlatformCompat.h"
 #include "fp_cplug.h"
 #include "fp_def.h"
 #include "Scale.h"

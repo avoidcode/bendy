@@ -221,8 +221,12 @@ END_NAMESPACE_VSTGUI
 //-----------------------------------------------------------------------------
 #if MAC
 //-----------------------------------------------------------------------------
+#if !__LP64__
 #include <QuickTime/QuickTime.h>
+#endif
 #include <CoreServices/CoreServices.h>
+#include <CoreGraphics/CoreGraphics.h>
+#include <dlfcn.h>
 
 BEGIN_NAMESPACE_VSTGUI
 
@@ -260,7 +264,9 @@ static CFontDesc gSymbolFont ("Helvetica", 12);
 #define	M_PI		3.14159265358979323846	/* pi */
 #endif
 
+#if MAC_CARBON
 bool isWindowComposited (WindowRef window);
+#endif
 static inline void QuartzSetLineDash (CGContextRef context, CLineStyle style, CCoord lineWidth);
 static inline void QuartzSetupClip (CGContextRef context, const CRect clipRect);
 static inline double radians (double degrees) { return degrees * M_PI / 180; }
@@ -2351,6 +2357,10 @@ void CDrawContext::getMouseLocation (CPoint &point)
 	if (pFrame)
 		point.offset (pFrame->hiScrollOffset.x,pFrame->hiScrollOffset.y);
 
+#elif MAC_COCOA
+	if (pFrame && pFrame->getNSView ())
+		nsViewGetCurrentMouseLocation (pFrame->getNSView (), point);
+
 #endif
 
 	point.offset (-offsetScreen.h, -offsetScreen.v);
@@ -2385,7 +2395,7 @@ bool CDrawContext::waitDoubleClick ()
 		currentTime = GetTickCount ();
 	}
 
-#elif MAC
+#elif MAC_CARBON
 	EventTimeout timeout = GetDblTime () * kEventDurationSecond / 60;
 	const EventTypeSpec eventTypes[] = { { kEventClassMouse, kEventMouseDown }, { kEventClassMouse, kEventMouseDragged } };
 	EventRef event;
@@ -2406,7 +2416,7 @@ bool CDrawContext::waitDoubleClick ()
 //-----------------------------------------------------------------------------
 bool CDrawContext::waitDrag ()
 {
-	#if MAC
+	#if MAC_CARBON
 	bool dragged = false;
 	if (GetCurrentEventButtonState () & kEventMouseButtonPrimary)
 	{
@@ -2422,6 +2432,9 @@ bool CDrawContext::waitDrag ()
 		}
 	}
 	return dragged;
+
+	#elif MAC_COCOA
+	return false;
 
 	#else
 	if (!pFrame)
@@ -5014,7 +5027,31 @@ long CFrame::getCurrentMouseButtons () const
 		buttons |= kAlt;
 #endif
 
-#if MAC
+#if MAC_COCOA
+	if (CGEventSourceButtonState (kCGEventSourceStateCombinedSessionState, kCGMouseButtonLeft))
+		buttons |= (bSwapped_mouse_buttons ? kRButton : kLButton);
+	if (CGEventSourceButtonState (kCGEventSourceStateCombinedSessionState, kCGMouseButtonCenter))
+		buttons |= kMButton;
+	if (CGEventSourceButtonState (kCGEventSourceStateCombinedSessionState, kCGMouseButtonRight))
+		buttons |= (bSwapped_mouse_buttons ? kLButton : kRButton);
+
+	CGEventFlags flags = CGEventSourceFlagsState (kCGEventSourceStateCombinedSessionState);
+	if (flags & kCGEventFlagMaskShift)
+		buttons |= kShift;
+	if (flags & kCGEventFlagMaskControl)
+		buttons |= kControl;
+	if (flags & kCGEventFlagMaskAlternate)
+		buttons |= kAlt;
+	if (flags & kCGEventFlagMaskCommand)
+		buttons |= kApple;
+	// for the one buttons
+	if (buttons & kApple && buttons & kLButton)
+	{
+		buttons &= ~(kApple | kLButton);
+		buttons |= kRButton;
+	}
+
+#elif MAC_CARBON
 	UInt32 state = GetCurrentButtonState ();
 	if (state == kEventMouseButtonPrimary)
 		buttons |= kLButton;
@@ -7043,6 +7080,31 @@ void* CBitmap::getHandle () const
 	return pHandle; 
 }
 
+#if VSTGUI_USES_COREGRAPHICS
+// -----------------------------------------------------------------------------
+// Resolve the directory containing the running plugin dylib. FL installs native
+// plugins as a bare .dylib in a folder, so bitmaps live next to it rather than
+// inside a CFBundle.
+static bool GetPluginImageDirectory (char* out, size_t outSize)
+{
+	if (outSize == 0)
+		return false;
+
+	Dl_info info;
+	if (dladdr ((void*)&GetPluginImageDirectory, &info) == 0 || info.dli_fname == 0)
+		return false;
+
+	strncpy (out, info.dli_fname, outSize - 1);
+	out[outSize - 1] = 0;
+
+	char* slash = strrchr (out, '/');
+	if (slash == 0)
+		return false;
+	*slash = 0;
+	return true;
+}
+#endif // VSTGUI_USES_COREGRAPHICS
+
 //-----------------------------------------------------------------------------
 bool CBitmap::loadFromResource (const CResourceDescription& resourceDesc)
 {
@@ -7235,27 +7297,19 @@ bool CBitmap::loadFromResource (const CResourceDescription& resourceDesc)
 	pHandle = 0;
 	pMask = 0;
 	cgImage = 0;
-	if (getBundleRef ())
 	{
-		// find the bitmap in our Bundle. It must be in the form of bmp00123.png, where the resource id would be 123.
-		char filename [PATH_MAX];
-		if (resourceDesc.type == CResourceDescription::kIntegerType)
-			sprintf (filename, "bmp%05d", (int)resourceDesc.u.id);
-		else
-			strcpy (filename, resourceDesc.u.name);
-		CFStringRef cfStr = CFStringCreateWithCString (NULL, filename, kCFStringEncodingUTF8);
-		if (cfStr)
+		// Bitmaps are shipped next to the plugin dylib as bmp00123.png, where
+		// 123 is the integer resource id from resource.h.
+		char directory [PATH_MAX];
+		if (GetPluginImageDirectory (directory, sizeof (directory)))
 		{
-			CFURLRef url = NULL;
-			int i = 0;
-			while (url == NULL)
-			{
-				static CFStringRef resTypes [] = { CFSTR("png"), CFSTR("bmp"), CFSTR("jpg"), CFSTR("pict"), NULL };
-				url = CFBundleCopyResourceURL (getBundleRef (), cfStr, resourceDesc.type == CResourceDescription::kIntegerType ? resTypes[i] : 0, NULL);
-				if (resTypes[++i] == NULL)
-					break;
-			}
-			CFRelease (cfStr);
+			char filename [PATH_MAX];
+			if (resourceDesc.type == CResourceDescription::kIntegerType)
+				snprintf (filename, sizeof (filename), "%s/bmp%05d.png", directory, (int)resourceDesc.u.id);
+			else
+				snprintf (filename, sizeof (filename), "%s/%s", directory, resourceDesc.u.name);
+
+			CFURLRef url = CFURLCreateFromFileSystemRepresentation (NULL, (const UInt8*)filename, strlen (filename), false);
 			if (url)
 			{
 				result = loadFromPath (url);
@@ -7269,7 +7323,7 @@ bool CBitmap::loadFromResource (const CResourceDescription& resourceDesc)
 			}
 		}
 	}
-	
+
 	#if !NO_QUICKDRAW
 	if (!result && pHandle == 0)
 	{

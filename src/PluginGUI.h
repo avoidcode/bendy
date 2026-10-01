@@ -1,5 +1,6 @@
 #pragma once
 
+#include "PlatformCompat.h"
 #include "plugguieditor.h"
 #include <string>
 #include <map>

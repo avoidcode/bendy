@@ -3,6 +3,7 @@
 #include "Parameter.h"
 #include "vstcontrols_ext.h"
 #include "../resource.h"
+#include <cwchar>
 //------------------------------------------------------------------------------------
 //AEffGUIEditor* createEditor(AudioEffectX* effect)
 //{
@@ -300,7 +301,7 @@ void PluginGUI::idle()
 			float val = _letters[i]->getValue();
 			if (val > 0)
 			{
-				val = max(val - 0.1f, 0);
+				val = max(val - 0.1f, 0.0f);
 				_letters[i]->setValue(val);
 				_letters[i]->invalid();
 			}
@@ -380,6 +381,9 @@ void PluginGUI::valueChanged(CControl* pControl)
 
 CPoint  PluginGUI::getPopupLocation()
 {
+#ifdef __APPLE__
+	return CPoint(0, 0);
+#else
 	POINT _where;
 	GetCursorPos(&_where);
 	CPoint mousePos(static_cast<CCoord> (_where.x), static_cast<CCoord> (_where.y));
@@ -398,10 +402,14 @@ CPoint  PluginGUI::getPopupLocation()
 
 	mousePos = mousePos + globalPos;
 	return mousePos;
+#endif
 }
 
 int PluginGUI::beginPopupMenu()
 {
+#ifdef __APPLE__
+	return 0;
+#else
 	if (frame != nullptr)
 	{
 		//Win32Frame* winFrame = (Win32Frame*)_interface->getFrame()->getPlatformFrame();
@@ -421,18 +429,27 @@ int PluginGUI::beginPopupMenu()
 		//}
 	}
 	return 0;
+#endif
 }
 
 void PluginGUI::popupMenuAdd(int menu, std::wstring text, int id, bool horizontalBreak)
 {
+#ifdef __APPLE__
+	(void)menu; (void)text; (void)id; (void)horizontalBreak;
+#else
 	if (horizontalBreak)
 		AppendMenu((HMENU)menu, MF_STRING | MF_MENUBREAK, id, text.c_str());
 	else
 		AppendMenu((HMENU)menu, MF_STRING, id, text.c_str());
+#endif
 }
 
 int PluginGUI::endPopupMenu(int menu)
 {
+#ifdef __APPLE__
+	(void)menu;
+	return 0;
+#else
 	if (frame != nullptr)
 	{
 		CPoint mousePos = getPopupLocation();
@@ -444,6 +461,7 @@ int PluginGUI::endPopupMenu(int menu)
 		return (int)val;
 	}
 	return 0;
+#endif
 }
 
 //------------------------------------------------------------------------------------
@@ -462,19 +480,19 @@ void PluginGUI::showTooltip(std::wstring text)
 	else
 	{
 		char* asciiTooltip = new char[(text.length() + 1)];
-		wcstombs(asciiTooltip, text.c_str(), (text.length() + 1));
+		platformWideToBytes(asciiTooltip, text.c_str(), (text.length() + 1));
 		_plugin->ShowHintMsg(asciiTooltip);
-		delete asciiTooltip;
+		delete[] asciiTooltip;
 	}
 }
 
 std::wstring PluginGUI::getInput(std::wstring caption, std::wstring defaultText)
 {
 	char cap[256];
-	wcstombs(cap, caption.c_str(), caption.length() + 1);
+	platformWideToBytes(cap, caption.c_str(), caption.length() + 1);
 
 	char result[256];
-	wcstombs(result, defaultText.c_str(), defaultText.length() + 1);
+	platformWideToBytes(result, defaultText.c_str(), defaultText.length() + 1);
 
 	int col = -1;
 	if (_plugin->PlugHost->PromptEdit(-1, -1, cap, result, col))
@@ -489,6 +507,10 @@ std::wstring PluginGUI::getInput(std::wstring caption, std::wstring defaultText)
 
 void PluginGUI::showDefaultControlMenu(PlugParameter* param, bool noteControlAssigned)
 {
+#ifdef __APPLE__
+	(void)param; (void)noteControlAssigned;
+	// Context menus are not implemented on macOS yet.
+#else
 	if (frame != nullptr && param != nullptr)
 	{
 		bool showMinMax = dynamic_cast<ParameterFloat*>(param) != nullptr || dynamic_cast<ParameterInt*>(param) != nullptr;
@@ -546,12 +568,12 @@ void PluginGUI::showDefaultControlMenu(PlugParameter* param, bool noteControlAss
 			if (r == 1)
 			{
 				input = getInput(L"Enter Min Value", std::to_wstring(param->getMin()));
-				param->setMin(_wtof(input.c_str()));
+				param->setMin(wcstof(input.c_str(), nullptr));
 			}
 			else
 			{
 				input = getInput(L"Enter Max Value", std::to_wstring(param->getMax()));
-				param->setMax(_wtof(input.c_str()));
+				param->setMax(wcstof(input.c_str(), nullptr));
 			}
 			_plugin->ProcessParam(param->index, static_cast<int>(param->getFloat()), REC_UpdateControl);
 		}
@@ -566,6 +588,7 @@ void PluginGUI::showDefaultControlMenu(PlugParameter* param, bool noteControlAss
 
 		ContextMenu = 0;
 	}
+#endif
 }
 
 
@@ -580,8 +603,7 @@ struct MidiCCDefault
 	int cc;
 };
 
-int numCCDefaults = 13;
-MidiCCDefault* kCCDefaults = new MidiCCDefault[]
+MidiCCDefault kCCDefaults[] =
 {
 	MidiCCDefault(L"Reverb (91)", 91),
 	MidiCCDefault(L"Tremolo (92)", 92),
@@ -597,10 +619,15 @@ MidiCCDefault* kCCDefaults = new MidiCCDefault[]
 	MidiCCDefault(L"Filter Reso (71)", 71),
 	MidiCCDefault(L"Expression Pedal (11)", 11),
 };
+int numCCDefaults = sizeof(kCCDefaults) / sizeof(kCCDefaults[0]);
 
 
 int PluginGUI::showDefaultCCMenu()
 {
+#ifdef __APPLE__
+	// Context menus are not implemented on macOS yet.
+	return -1;
+#else
 	if (frame != nullptr)
 	{
 		CPoint mousePos = getPopupLocation();
@@ -622,5 +649,7 @@ int PluginGUI::showDefaultCCMenu()
 		ContextMenu = 0;
 		return ret;
 	}
+	return -1;
+#endif
 }
 

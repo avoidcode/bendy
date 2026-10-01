@@ -2,8 +2,7 @@
 #include "PluginGUI.h"
 #include "State.h"
 #include "StreamWrapper.h"
-#include <codecvt>
-#include <locale>
+#include <cmath>
 extern "C" TFruityPlug * _stdcall CreatePlugInstance(TFruityPlugHost * Host, TPluginTag Tag)
 {
 	FruityPlugInfo info;
@@ -17,15 +16,21 @@ TFruityPlugInfo PlugInfo =
 	CurrentSDKVersion,
 	new char[] { "BENDY" },
 	new char[] { "BENDY" },
+#ifdef __APPLE__
+	FPF_Type_Visual | FPF_WantNewTick | FPF_MIDIOut | FPF_MacNeedsNSView // the amount of parameters
+#else
 	FPF_Type_Visual | FPF_WantNewTick | FPF_MIDIOut // the amount of parameters
+#endif
 };
 
 void* hInstance; // used by VSTGUI
+#ifndef __APPLE__
 extern "C" BOOL WINAPI DllMain(HINSTANCE hInst, DWORD dwReason, LPVOID lpvReserved)
 {
 	hInstance = hInst;
 	return TRUE;
 }
+#endif
 
 Plugin::Plugin(void* data)
 	: TCPPFruityPlug(static_cast<FruityPlugInfo*>(data)->Tag, static_cast<FruityPlugInfo*>(data)->Host, 0)
@@ -323,18 +328,20 @@ intptr_t _stdcall Plugin::Dispatcher(intptr_t ID, intptr_t Index, intptr_t Value
 
 			// open editor
 			_gui = new PluginGUI(this);
-			_gui->open(reinterpret_cast<HWND>(Value));
+			_gui->open(reinterpret_cast<void*>(Value));
 			_gui->getFrame()->takeFocus();
 
 			//_gui->getFrame()->getSystemWindow
 
-			EditorHandle = static_cast<HWND>(_gui->getFrame()->getSystemWindow());
+			EditorHandle = reinterpret_cast<HWND>(_gui->getFrame()->getSystemWindow());
 		}
+#ifndef __APPLE__
 		else
 		{
 			// change parent window ?
 			::SetParent(EditorHandle, reinterpret_cast<HWND>(Value));
 		}
+#endif
 	}
 	else if (ID == FPD_SetPreset)
 	{
@@ -561,7 +568,7 @@ void _stdcall Plugin::GetName(int Section, int Index, int Value, char* Name)
 	{
 		PlugParameter* param = getParameterByIndex(Index);
 		if (param != nullptr)
-			wcstombs(Name, param->name.c_str(), param->name.length() + 1);
+			platformWideToBytes(Name, param->name.c_str(), param->name.length() + 1);
 	}
 	else if (Section == FPN_ParamValue)
 	{
@@ -569,19 +576,19 @@ void _stdcall Plugin::GetName(int Section, int Index, int Value, char* Name)
 		if (param != nullptr)
 		{
 			std::wstring str = param->toString();
-			wcstombs(Name, str.c_str(), str.length() + 1);
+			platformWideToBytes(Name, str.c_str(), str.length() + 1);
 		}
 	}
 	else if (Section == FPN_Preset)
 	{
 		if(Index < _presets.size())
-			wcstombs(Name, _presets[Index]->presetName.c_str(), _presets[Index]->presetName.length() + 1);
+			platformWideToBytes(Name, _presets[Index]->presetName.c_str(), _presets[Index]->presetName.length() + 1);
 	}
 	else if (Section == FPN_Semitone)
 	{
 		auto it = _state->preset.noteNames.find(Index);
 		if (it != _state->preset.noteNames.end())
-			wcstombs(Name, (*it).second.c_str(), (*it).second.length() + 1);
+			platformWideToBytes(Name, (*it).second.c_str(), (*it).second.length() + 1);
 	}
 	else if (Section == FPN_VoiceLevel || Section == FPN_VoiceLevelHint)
 	{
@@ -606,7 +613,7 @@ void _stdcall Plugin::GetName(int Section, int Index, int Value, char* Name)
 		if(nm == L"")
 			nm = L"Unassigned Control " + std::to_wstring(Index + 1);
 
-		wcstombs(Name, nm.c_str(), nm.length() + 1);
+		platformWideToBytes(Name, nm.c_str(), nm.length() + 1);
 	}
 }
 
@@ -724,7 +731,7 @@ void _stdcall Plugin::NewTick()
 
 			byte writeVelocity = n->velocity;
 			if (_state->legacy)
-				writeVelocity = (byte)min((n->channelVolume) * 127, 127);
+				writeVelocity = (byte)min((n->channelVolume) * 127.0f, 127.0f);
 			else if (_state->enableNoteVelocity.value)
 				writeVelocity = 127; //Velocity override uses midi channel volume to control note volume instead of velocity
 
@@ -774,7 +781,7 @@ TVoiceHandle _stdcall Plugin::TriggerVoice(PVoiceParams VoiceParams, intptr_t Se
 	{
 		int ret = PlugHost->Voice_ProcessEvent(SetTag, FPV_GetVelocity, 0, 0);
 		float vel = *(float*)&ret;
-		n->midiVelocity = min(std::roundf(vel * 127), 127);
+		n->midiVelocity = (byte)min(std::roundf(vel * 127), 127.0f);
 
 		PlugHost->Voice_ProcessEvent(SetTag, FPV_SetLinkVelocity, 0, 0);
 	}
@@ -1142,7 +1149,7 @@ void Plugin::WriteVolume(Note* note)
 			return;
 
 		volume *= 127;
-		volume = (byte)min((note->channelVolume * 1.45f) * 127, 127);
+		volume = (byte)min((note->channelVolume * 1.45f) * 127.0f, 127.0f);
 	}
 	else
 	{

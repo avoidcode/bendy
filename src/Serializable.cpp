@@ -1,8 +1,45 @@
 #include "Serializable.h"
 #include "StreamWrapper.h"
 #include "CRC32.h"
-#include <locale>
-#include <codecvt>
+#include <string>
+
+namespace
+{
+	// UTF-8 encoding of a wide string. This replaces the deprecated
+	// std::wstring_convert/std::codecvt machinery and works identically on
+	// Windows (16-bit wchar_t) and macOS (32-bit wchar_t).
+	std::string wideToUtf8(const std::wstring& input)
+	{
+		std::string out;
+		out.reserve(input.size());
+		for (std::wstring::const_iterator it = input.begin(); it != input.end(); ++it)
+		{
+			unsigned int cp = (unsigned int)*it;
+			if (cp < 0x80)
+				out.push_back((char)cp);
+			else if (cp < 0x800)
+			{
+				out.push_back((char)(0xC0 | (cp >> 6)));
+				out.push_back((char)(0x80 | (cp & 0x3F)));
+			}
+			else if (cp < 0x10000)
+			{
+				out.push_back((char)(0xE0 | (cp >> 12)));
+				out.push_back((char)(0x80 | ((cp >> 6) & 0x3F)));
+				out.push_back((char)(0x80 | (cp & 0x3F)));
+			}
+			else
+			{
+				out.push_back((char)(0xF0 | (cp >> 18)));
+				out.push_back((char)(0x80 | ((cp >> 12) & 0x3F)));
+				out.push_back((char)(0x80 | ((cp >> 6) & 0x3F)));
+				out.push_back((char)(0x80 | (cp & 0x3F)));
+			}
+		}
+		return out;
+	}
+}
+
 Serializable::Serializable(std::wstring readableName, std::wstring id) :
 	name(readableName),
 	id(id),
@@ -10,12 +47,9 @@ Serializable::Serializable(std::wstring readableName, std::wstring id) :
 	legacyFixedIndex(-1),
 	index(-1)
 {
-	//setup converter
-	using convert_type = std::codecvt_utf8<wchar_t>;
-	std::wstring_convert<convert_type, wchar_t> converter;
-	std::string converted_str = converter.to_bytes(id);
+	std::string converted_str = wideToUtf8(id);
 
-	hash = crc32buf((char*)converted_str.c_str(), sizeof(char) * id.length());
+	hash = crc32buf((char*)converted_str.c_str(), sizeof(char) * converted_str.length());
 }
 
 void Serializable::serialize(Stream* s)

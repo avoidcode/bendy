@@ -1,4 +1,5 @@
 #pragma once
+#include "PlatformCompat.h"
 #include "vstcontrols.h"
 #include <string>
 #include <algorithm>

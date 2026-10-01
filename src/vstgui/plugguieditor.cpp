@@ -36,6 +36,9 @@
 #include "plugguieditor.h"
 #endif
 
+#include <chrono>
+#include <thread>
+
 #define kIdleRate    100 // host idle rate in ms
 #define kIdleRate2    50
 #define kIdleRateMin   4 // minimum time between 2 idles in ms
@@ -122,9 +125,8 @@ long PluginGUIEditor::setKnobMode (int val)
 void PluginGUIEditor::wait (unsigned long ms)
 {
 	#if MAC
-	unsigned long ticks;
-	Delay (ms * 60 / 1000, &ticks);
-	
+	std::this_thread::sleep_for (std::chrono::milliseconds (ms));
+
 	#elif WINDOWS
 	Sleep (ms);
 
@@ -135,11 +137,12 @@ void PluginGUIEditor::wait (unsigned long ms)
 unsigned long PluginGUIEditor::getTicks ()
 {
 	#if MAC
-	return (TickCount () * 1000) / 60;
-	
+	return (unsigned long)std::chrono::duration_cast<std::chrono::milliseconds> (
+		std::chrono::steady_clock::now ().time_since_epoch ()).count ();
+
 	#elif WINDOWS
 	return (unsigned long)GetTickCount ();
-	
+
 	#endif
 
 	return 0;
@@ -154,11 +157,7 @@ void PluginGUIEditor::doIdleStuff ()
 	// YG TEST idle ();
 	if (currentTicks < lLastTicks)
 	{
-		#if (MAC && TARGET_API_MAC_CARBON)
-		RunCurrentEventLoop (kEventDurationMillisecond * kIdleRateMin);
-		#else
 		wait (kIdleRateMin);
-		#endif
 		currentTicks += kIdleRateMin;
 		if (currentTicks < lLastTicks - kIdleRate2)
 			return;
@@ -168,15 +167,6 @@ void PluginGUIEditor::doIdleStuff ()
 	#if WINDOWS
 	if (PeekMessage (&windowsMessage, NULL, WM_PAINT, WM_PAINT, PM_REMOVE))
 		DispatchMessage (&windowsMessage);
-
-	#elif MAC
-	EventRef event;
-	EventTypeSpec eventTypes[] = { {kEventClassWindow, kEventWindowUpdate}, {kEventClassWindow, kEventWindowDrawContent} };
-	if (ReceiveNextEvent (GetEventTypeCount (eventTypes), eventTypes, kEventDurationNoWait, true, &event) == noErr)
-	{
-		SendEventToEventTarget (event, GetEventDispatcherTarget ());
-		ReleaseEvent (event);
-	}
 	#endif
 
 	// save the next time
@@ -192,94 +182,17 @@ long PluginGUIEditor::getRect (ERect **ppErect)
 
 #if MAC
 // -----------------------------------------------------------------------------
+// The plugin is shipped as a bare .dylib (not a bundle), so there is no
+// CFBundle to derive resource paths from. Bitmaps are resolved relative to the
+// dylib's own directory by CBitmap::loadFromResource, so no bundle reference is
+// required here.
 // -----------------------------------------------------------------------------
-extern "C" {
-#include <mach-o/dyld.h>
-#include <mach-o/ldsyms.h>
-}
-#include <CoreFoundation/CFBundle.h>
-
 BEGIN_NAMESPACE_VSTGUI
 
 void* gBundleRef = 0;
 
 END_NAMESPACE_VSTGUI
 
-#if USE_NAMESPACE
-#define VSTGUI_BUNDLEREF VSTGUI::gBundleRef
-#else
-#define VSTGUI_BUNDLEREF gBundleRef
-#endif
-
-#if PLUGGUI_STANDALONE
-void InitMachOLibrary ()
-{
-	VSTGUI_BUNDLEREF = CFBundleGetMainBundle ();
-}
-
+void InitMachOLibrary () {}
 void ExitMachOLibrary () {}
-#else
-// -----------------------------------------------------------------------------
-static CFBundleRef _CFXBundleCreateFromImageName (CFAllocatorRef allocator, const char* image_name);
-static CFBundleRef _CFXBundleCreateFromImageName (CFAllocatorRef allocator, const char* image_name)
-{
-	CFURLRef myBundleExecutableURL = CFURLCreateFromFileSystemRepresentation (allocator, (const unsigned char*)image_name, strlen (image_name), false);
-	if (myBundleExecutableURL == 0)
-		return 0;
-		
-	CFURLRef myBundleContentsMacOSURL = CFURLCreateCopyDeletingLastPathComponent (allocator, myBundleExecutableURL); // Delete Versions/Current/Executable
-	CFRelease (myBundleExecutableURL);
-	if (myBundleContentsMacOSURL == 0)
-		return 0;
-
-	CFURLRef myBundleContentsURL = CFURLCreateCopyDeletingLastPathComponent (allocator, myBundleContentsMacOSURL); // Delete Current
-	CFRelease (myBundleContentsMacOSURL);
-	if (myBundleContentsURL == 0)
-		return 0;
-		
-	CFURLRef theBundleURL = CFURLCreateCopyDeletingLastPathComponent (allocator, myBundleContentsURL); // Delete Versions
-	CFRelease (myBundleContentsURL);
-	if (theBundleURL == 0)
-		return 0;
-
-	CFBundleRef result = CFBundleCreate (allocator, theBundleURL);
-	CFRelease (theBundleURL);
-
-	return result;
-}
-
-// -----------------------------------------------------------------------------
-void InitMachOLibrary ();
-void InitMachOLibrary ()
-{
-	const mach_header* header = &_mh_bundle_header;
-	if (header == 0)
-		return;
-
-	const char* imagename = 0;
-	/* determine the image name, TODO: ther have to be a better way */
-	int cnt = _dyld_image_count();
-	for (int idx1 = 1; idx1 < cnt; idx1++) 
-	{
-		if (_dyld_get_image_header(idx1) == header)
-		{
-			imagename = _dyld_get_image_name(idx1);
-			break;
-		}
-	}
-	if (imagename == 0)
-	return;
-	/* get the bundle of a header, TODO: ther have to be a better way */
-	VSTGUI_BUNDLEREF = _CFXBundleCreateFromImageName (NULL, imagename);
-}
-
-// -----------------------------------------------------------------------------
-void ExitMachOLibrary ();
-void ExitMachOLibrary ()
-{
-	if (VSTGUI_BUNDLEREF)
-		CFRelease (VSTGUI_BUNDLEREF);
-}
-
-#endif
 #endif

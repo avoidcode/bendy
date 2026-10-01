@@ -1,5 +1,6 @@
 #include "Parameter.h"
 #include "StreamWrapper.h"
+#include <cfloat>
 
 bool MidiCluster::shouldTrigger()
 {
