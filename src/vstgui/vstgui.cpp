@@ -104,13 +104,14 @@ END_NAMESPACE_VSTGUI
 #endif
 //---End For Debugging------------------------
 
+static bool bSwapped_mouse_buttons = false;
+
 #if WINDOWS
 
 #if GDIPLUS
 #pragma comment( lib, "Gdiplus" )
 #endif
 
-static bool bSwapped_mouse_buttons = false; 
 OSVERSIONINFOEX	gSystemVersion;
 
 // Alpha blending for Windows using library : msimg32.dll
@@ -7968,7 +7969,7 @@ void CBitmap::setTransparentColor (const CColor color)
 		{
 			if (CGImageGetBitsPerComponent((CGImageRef)cgImage) == 8)
 			{
-				CGFloat myMaskingColors[] = { color.red, color.red, color.green, color.green, color.blue, color.blue };
+				CGFloat myMaskingColors[] = { (CGFloat)color.red, (CGFloat)color.red, (CGFloat)color.green, (CGFloat)color.green, (CGFloat)color.blue, (CGFloat)color.blue };
 				CGImageRef newImage = CGImageCreateWithMaskingColors ((CGImageRef)cgImage, myMaskingColors);
 				if (newImage)
 				{

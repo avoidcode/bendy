@@ -28,6 +28,7 @@ set(BENDY_SOURCES
 	src/fl/fp_plugclass.cpp
 	src/vstgui/plugguieditor.cpp
 	src/vstgui/vstcontrols.cpp
+	src/vstgui/cfileselector.cpp
 	src/vstgui/cvstguitimer.cpp
 	src/vstgui/vstgui.cpp
 	src/vstgui/cocoasupport.mm

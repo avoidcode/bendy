@@ -47,6 +47,10 @@
 
 #define HIDDEN __attribute__((__visibility__("hidden")))
 
+// Modern macOS SDKs declare objc_msgSendSuper with no parameters so that a
+// cast is required. This object-like macro supplies the classic variadic type.
+#define objc_msgSendSuper ((id (*)(struct objc_super *, SEL, ...))objc_msgSendSuper)
+
 //------------------------------------------------------------------------------------
 static Class menuClass = 0;
 #if VSTGUI_NEW_CFILESELECTOR
@@ -70,8 +74,9 @@ inline HIDDEN id get_Objc_Value (id obj, const char* name)
 	Ivar ivar = class_getInstanceVariable ([obj class], name);
 	if (ivar)
 	{
-		id value = object_getIvar (obj, ivar);
-		return value;
+		// Direct ivar access: object_getIvar is undefined for non-object ivars
+		// (the frame pointer is stored as a plain pointer).
+		return *(id*)((char*)obj + ivar_getOffset (ivar));
 	}
 	return nil;
 }
@@ -82,7 +87,7 @@ inline HIDDEN void set_Objc_Value (id obj, const char* name, id value)
 	Ivar ivar = class_getInstanceVariable ([obj class], name);
 	if (ivar)
 	{
-		object_setIvar (obj, ivar, value);
+		*(id*)((char*)obj + ivar_getOffset (ivar)) = value;
 	}
 }
 
