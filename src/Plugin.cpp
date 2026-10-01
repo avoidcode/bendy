@@ -318,6 +318,7 @@ intptr_t _stdcall Plugin::Dispatcher(intptr_t ID, intptr_t Index, intptr_t Value
 				delete _gui;
 				_gui = nullptr;
 			}
+			return 0;
 		}
 		else if (EditorHandle == 0)
 		{
@@ -331,11 +332,22 @@ intptr_t _stdcall Plugin::Dispatcher(intptr_t ID, intptr_t Index, intptr_t Value
 			_gui->open(reinterpret_cast<void*>(Value));
 			_gui->getFrame()->takeFocus();
 
-			//_gui->getFrame()->getSystemWindow
-
+#ifdef __APPLE__
+			// On macOS the host provides an NSView parent; the plugin adds its own
+			// subview and must report that subview as the editor handle.
+			EditorHandle = reinterpret_cast<HWND>(_gui->getFrame()->getNSView());
+#else
 			EditorHandle = reinterpret_cast<HWND>(_gui->getFrame()->getSystemWindow());
+#endif
+			return EditorHandle;
 		}
-#ifndef __APPLE__
+#ifdef __APPLE__
+		else
+		{
+			// already open: keep reporting the editor view to the host
+			return EditorHandle;
+		}
+#else
 		else
 		{
 			// change parent window ?

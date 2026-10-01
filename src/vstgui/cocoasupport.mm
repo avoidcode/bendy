@@ -47,9 +47,13 @@
 
 #define HIDDEN __attribute__((__visibility__("hidden")))
 
+
 // Modern macOS SDKs declare objc_msgSendSuper with no parameters so that a
-// cast is required. This object-like macro supplies the classic variadic type.
-#define objc_msgSendSuper ((id (*)(struct objc_super *, SEL, ...))objc_msgSendSuper)
+// cast is required. On arm64 the compiler uses objc_msgSendSuper2, matching the
+// __OBJC_SUPER super_class convention above. objc_msgSendSuper2 is not declared
+// in the public headers, so bind it to its symbol directly.
+extern "C" id vstgui_objc_msgSendSuper2 (struct objc_super *, SEL, ...) __asm__ ("_objc_msgSendSuper2");
+#define objc_msgSendSuper ((id (*)(struct objc_super *, SEL, ...))vstgui_objc_msgSendSuper2)
 
 //------------------------------------------------------------------------------------
 static Class menuClass = 0;
@@ -91,7 +95,9 @@ inline HIDDEN void set_Objc_Value (id obj, const char* name, id value)
 	}
 }
 
-#define __OBJC_SUPER(x) objc_super __os; __os.receiver = x; __os.super_class = class_getSuperclass ([x class]);
+// On arm64 the runtime uses objc_msgSendSuper2, which expects super_class to be
+// the receiver's own class (lookup starts at its superclass).
+#define __OBJC_SUPER(x) objc_super __os; __os.receiver = x; __os.super_class = [x class];
 #define SUPER	&__os
 #define OBJC_GET_VALUE(x,y) get_Objc_Value (x, #y)
 #define OBJC_SET_VALUE(x,y,z) set_Objc_Value (x, #y, (id)z)
@@ -208,7 +214,7 @@ static NSImage* imageFromCGImageRef (CGImageRef image)
     [newImage lockFocus];
  
     // Get the Quartz context and draw.
-    imageContext = (CGContextRef)[[NSGraphicsContext currentContext] graphicsPort];
+    imageContext = (CGContextRef)[[NSGraphicsContext currentContext] CGContext];
     CGContextDrawImage(imageContext, NSRectToCGRect (imageRect), image);
     [newImage unlockFocus];
  
@@ -295,7 +301,8 @@ HIDDEN void getSizeOfNSView (void* nsView, CRect* rect)
 HIDDEN bool nsViewGetCurrentMouseLocation (void* nsView, CPoint& where)
 {
 	NSView* view = (NSView*)nsView;
-	NSPoint p = [[view window] mouseLocationOutsideOfEventStream];
+	NSPoint p = [NSEvent mouseLocation];
+	p = [[view window] convertPointFromScreen:p];
 	p = [view convertPoint:p fromView:nil];
 	where = pointFromNSPoint (p);
 	return true;
@@ -581,15 +588,8 @@ static void VSTGUI_NSView_drawRect (id self, SEL _cmd, NSRect rect)
 	if (_vstguiframe)
 	{
 		NSGraphicsContext* nsContext = [NSGraphicsContext currentContext];
-		
-		CDrawContext drawContext (_vstguiframe, [nsContext graphicsPort]);
-		const NSRect* dirtyRects;
-		NSInteger numDirtyRects;
-		[self getRectsBeingDrawn:&dirtyRects count:&numDirtyRects];
-		for (NSInteger i = 0; i < numDirtyRects; i++)
-		{
-			_vstguiframe->drawRect (&drawContext, rectFromNSRect (dirtyRects[i]));
-		}
+		CDrawContext drawContext (_vstguiframe, nsContext ? [nsContext CGContext] : 0);
+		_vstguiframe->drawRect (&drawContext, rectFromNSRect (rect));
 	}
 }
 
@@ -671,81 +671,61 @@ static BOOL VSTGUI_NSView_onMouseMoved (id self, SEL _cmd, NSEvent* theEvent)
 //------------------------------------------------------------------------------------
 static void VSTGUI_NSView_mouseDown (id self, SEL _cmd, NSEvent* theEvent)
 {
-	__OBJC_SUPER(self)
-	if (![self onMouseDown: theEvent])
-		objc_msgSendSuper (SUPER, @selector(mouseDown:), theEvent);
+	[self onMouseDown: theEvent];
 }
 
 //------------------------------------------------------------------------------------
 static void VSTGUI_NSView_rightMouseDown (id self, SEL _cmd, NSEvent* theEvent)
 {
-	__OBJC_SUPER(self)
-	if (![self onMouseDown: theEvent])
-		objc_msgSendSuper (SUPER, @selector(rightMouseDown:), theEvent);
+	[self onMouseDown: theEvent];
 }
 
 //------------------------------------------------------------------------------------
 static void VSTGUI_NSView_otherMouseDown (id self, SEL _cmd, NSEvent* theEvent)
 {
-	__OBJC_SUPER(self)
-	if (![self onMouseDown: theEvent])
-		objc_msgSendSuper (SUPER, @selector(otherMouseDown:), theEvent);
+	[self onMouseDown: theEvent];
 }
 
 //------------------------------------------------------------------------------------
 static void VSTGUI_NSView_mouseUp (id self, SEL _cmd, NSEvent* theEvent)
 {
-	__OBJC_SUPER(self)
-	if (![self onMouseUp: theEvent])
-		objc_msgSendSuper (SUPER, @selector(mouseUp:), theEvent);
+	[self onMouseUp: theEvent];
 }
 
 //------------------------------------------------------------------------------------
 static void VSTGUI_NSView_rightMouseUp (id self, SEL _cmd, NSEvent* theEvent)
 {
-	__OBJC_SUPER(self)
-	if (![self onMouseUp: theEvent])
-		objc_msgSendSuper (SUPER, @selector(rightMouseUp:), theEvent);
+	[self onMouseUp: theEvent];
 }
 
 //------------------------------------------------------------------------------------
 static void VSTGUI_NSView_otherMouseUp (id self, SEL _cmd, NSEvent* theEvent)
 {
-	__OBJC_SUPER(self)
-	if (![self onMouseUp: theEvent])
-		objc_msgSendSuper (SUPER, @selector(otherMouseUp:), theEvent);
+	[self onMouseUp: theEvent];
 }
 
 //------------------------------------------------------------------------------------
 static void VSTGUI_NSView_mouseMoved (id self, SEL _cmd, NSEvent* theEvent)
 {
-	__OBJC_SUPER(self)
-	if (![self onMouseMoved: theEvent])
-		objc_msgSendSuper (SUPER, @selector(mouseMoved:), theEvent);
+	[self onMouseMoved: theEvent];
 }
 
 //------------------------------------------------------------------------------------
 static void VSTGUI_NSView_mouseDragged (id self, SEL _cmd, NSEvent* theEvent)
 {
-	__OBJC_SUPER(self)
-	if (![self onMouseMoved: theEvent])
-		objc_msgSendSuper (SUPER, @selector(mouseDragged:), theEvent);
+	[self onMouseMoved: theEvent];
 }
 
 //------------------------------------------------------------------------------------
 static void VSTGUI_NSView_rightMouseDragged (id self, SEL _cmd, NSEvent* theEvent)
 {
-	__OBJC_SUPER(self)
-	if (![self onMouseMoved: theEvent])
-		objc_msgSendSuper (SUPER, @selector(rightMouseDragged:), theEvent);
+	[self onMouseMoved: theEvent];
 }
 
 //------------------------------------------------------------------------------------
 static void VSTGUI_NSView_otherMouseDragged (id self, SEL _cmd, NSEvent* theEvent)
 {
-	__OBJC_SUPER(self)
-	if (![self onMouseMoved: theEvent])
-		objc_msgSendSuper (SUPER, @selector(otherMouseDragged:), theEvent);
+	[self onMouseMoved: theEvent];
 }
 
 //------------------------------------------------------------------------------------
@@ -789,7 +769,7 @@ static void VSTGUI_NSView_mouseExited (id self, SEL _cmd, NSEvent* theEvent)
 	unsigned int modifiers = [theEvent modifierFlags];
 	NSPoint nsPoint;
 	nsPoint = [NSEvent mouseLocation];
-	nsPoint = [[self window] convertScreenToBase:nsPoint];
+	nsPoint = [[self window] convertPointFromScreen:nsPoint];
 
 	nsPoint = [self convertPoint:nsPoint fromView:nil];
 	if (modifiers & NSShiftKeyMask)
@@ -1293,7 +1273,7 @@ void CocoaTooltipWindow::set (CView* view, const char* tooltip)
 	view->localToFrame (p);
 	NSPoint nsp = nsPointFromCPoint (p);
 	nsp = [nsView convertPoint:nsp toView:nil];
-	nsp = [[nsView window] convertBaseToScreen:nsp];
+	nsp = [[nsView window] convertPointToScreen:nsp];
 	nsp.y -= (textSize.height + 4);
 	nsp.x += (view->getViewSize ().getWidth () - textSize.width) / 2;
 	

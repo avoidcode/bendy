@@ -476,7 +476,7 @@ void PluginGUI::setParameter(int index, float value)
 void PluginGUI::showTooltip(std::wstring text)
 {
 	if (text == L"")
-		_plugin->ShowHintMsg(nullptr);
+		_plugin->ShowHintMsg((char*)"");
 	else
 	{
 		char* asciiTooltip = new char[(text.length() + 1)];
