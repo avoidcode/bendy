@@ -287,6 +287,70 @@ HIDDEN void forceNSViewDisplay (void* nsView)
 	[view display];
 }
 
+//------------------------------------------------------------------------------------
+// Native context menus (NSMenu)
+//------------------------------------------------------------------------------------
+HIDDEN void* nativeMenuCreate ()
+{
+	NSMenu* menu = [[NSMenu alloc] initWithTitle:@""];
+	[menu setAutoenablesItems:NO];
+	return menu;
+}
+
+HIDDEN void nativeMenuAddItem (void* menu, const char* utf8Text, int tag, bool enabled, bool checked, bool separator)
+{
+	NSMenu* m = (NSMenu*)menu;
+	if (separator)
+	{
+		[m addItem:[NSMenuItem separatorItem]];
+		return;
+	}
+	NSString* title = utf8Text ? [NSString stringWithUTF8String:utf8Text] : @"";
+	NSMenuItem* item = [[NSMenuItem alloc] initWithTitle:title action:nil keyEquivalent:@""];
+	[item setTag:tag];
+	[item setEnabled:enabled ? YES : NO];
+	[item setState:checked ? NSControlStateValueOn : NSControlStateValueOff];
+	[m addItem:item];
+	[item release];
+}
+
+HIDDEN void nativeMenuAddSubmenu (void* menu, void* submenu, const char* utf8Text)
+{
+	NSMenu* m = (NSMenu*)menu;
+	NSString* title = utf8Text ? [NSString stringWithUTF8String:utf8Text] : @"";
+	NSMenuItem* item = [[NSMenuItem alloc] initWithTitle:title action:nil keyEquivalent:@""];
+	[item setSubmenu:(NSMenu*)submenu];
+	[m addItem:item];
+	[item release];
+}
+
+HIDDEN int nativeMenuPopUp (void* menu, void* nsView, float x, float y)
+{
+	NSMenu* m = (NSMenu*)menu;
+	NSView* view = (NSView*)nsView;
+	if (view == nil)
+		return 0;
+
+	NSPopUpButtonCell* cell = [[NSPopUpButtonCell alloc] initTextCell:@"" pullsDown:NO];
+	[cell setAutoenablesItems:NO];
+	[cell setAltersStateOfSelectedItem:NO];
+	[cell setMenu:m];
+	NSRect frame = NSMakeRect (x, y, 1, 1);
+	[cell performClickWithFrame:frame inView:view];
+	NSMenuItem* item = [cell selectedItem];
+	if (item == nil && [m respondsToSelector:@selector(selectedItem)])
+		item = [m performSelector:@selector(selectedItem)];
+	int tag = item ? (int)[item tag] : 0;
+	[cell release];
+	return tag;
+}
+
+HIDDEN void nativeMenuDestroy (void* menu)
+{
+	if (menu)
+		[(NSMenu*)menu release];
+}
+
 HIDDEN void resizeNSView (void* nsView, const CRect& newSize)
 {
 	NSView* view = (NSView*)nsView;

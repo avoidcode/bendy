@@ -52,6 +52,13 @@ bool nsViewGetCurrentMouseLocation (void* nsView, CPoint& where);
 void nsViewSetMouseCursor (CCursorType type);
 void nsViewScrollRect (void* nsView, const CRect& src, const CPoint& distance);
 
+// native context menus (NSMenu)
+void* nativeMenuCreate ();
+void nativeMenuAddItem (void* menu, const char* utf8Text, int tag, bool enabled, bool checked, bool separator);
+void nativeMenuAddSubmenu (void* menu, void* submenu, const char* utf8Text);
+int nativeMenuPopUp (void* menu, void* nsView, float x, float y);
+void nativeMenuDestroy (void* menu);
+
 // used by CTextEdit
 void* addNSTextField (CFrame* frame, CTextEdit* edit);
 void removeNSTextField (void* control);

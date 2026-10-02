@@ -6,6 +6,7 @@
 #include <map>
 #include <vector>
 #include <unordered_set>
+#include <cstdint>
 
 
 
@@ -30,9 +31,9 @@ public:
 
 	CPoint getPopupLocation();
 
-	int beginPopupMenu();
-	void popupMenuAdd(int menu, std::wstring text, int id, bool horizontalBreak);
-	int endPopupMenu(int menu);
+	intptr_t beginPopupMenu();
+	void popupMenuAdd(intptr_t menu, std::wstring text, int id, bool horizontalBreak);
+	int endPopupMenu(intptr_t menu);
 
 	void showTooltip(std::wstring text);
 	std::wstring getInput(std::wstring caption, std::wstring defaultText);

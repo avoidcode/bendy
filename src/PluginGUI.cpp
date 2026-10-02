@@ -4,6 +4,7 @@
 #include "vstcontrols_ext.h"
 #include "../resource.h"
 #include <cwchar>
+#include <cstring>
 #ifdef __APPLE__
 #include "cocoasupport.h"
 #endif
@@ -397,6 +398,12 @@ void PluginGUI::valueChanged(CControl* pControl)
 CPoint  PluginGUI::getPopupLocation()
 {
 #ifdef __APPLE__
+	if (frame != nullptr && frame->getNSView() != nullptr)
+	{
+		CPoint p;
+		nsViewGetCurrentMouseLocation(frame->getNSView(), p);
+		return p;
+	}
 	return CPoint(0, 0);
 #else
 	POINT _where;
@@ -420,37 +427,30 @@ CPoint  PluginGUI::getPopupLocation()
 #endif
 }
 
-int PluginGUI::beginPopupMenu()
+intptr_t PluginGUI::beginPopupMenu()
 {
 #ifdef __APPLE__
-	return 0;
+	return (intptr_t)nativeMenuCreate();
 #else
 	if (frame != nullptr)
 	{
-		//Win32Frame* winFrame = (Win32Frame*)_interface->getFrame()->getPlatformFrame();
-		//if (winFrame != nullptr)
-		//{
 			HMENU hMenuPopup = CreatePopupMenu();
-			return (int)hMenuPopup;
-			//AppendMenu(hMenuPopup, MF_STRING, 0, L"Line");
-			//AppendMenu(hMenuPopup, MF_STRING, 1, L"Rectangle");
-			//AppendMenu(hMenuPopup, MF_STRING, 2, L"Circle");
-			//AppendMenu(hMenuPopup, MF_SEPARATOR, 0, NULL);
-			//AppendMenu(hMenuPopup, MF_STRING, 3, L"Help");
-			//BOOL val = TrackPopupMenu(hMenuPopup,
-			//	TPM_LEFTALIGN | TPM_RIGHTBUTTON | TPM_NONOTIFY | TPM_RETURNCMD,
-			//	mousePos.x, mousePos.y, 0, winFrame->getPlatformWindow(), NULL);
-			//DestroyMenu(hMenuPopup);
-		//}
+			return (intptr_t)hMenuPopup;
 	}
 	return 0;
 #endif
 }
 
-void PluginGUI::popupMenuAdd(int menu, std::wstring text, int id, bool horizontalBreak)
+void PluginGUI::popupMenuAdd(intptr_t menu, std::wstring text, int id, bool horizontalBreak)
 {
 #ifdef __APPLE__
-	(void)menu; (void)text; (void)id; (void)horizontalBreak;
+	(void)horizontalBreak;
+	if (menu == 0)
+		return;
+	char* utf8 = new char[(text.length() * 4) + 1];
+	platformWideToBytes(utf8, text.c_str(), (text.length() * 4) + 1);
+	nativeMenuAddItem((void*)menu, utf8, id, true, false, false);
+	delete[] utf8;
 #else
 	if (horizontalBreak)
 		AppendMenu((HMENU)menu, MF_STRING | MF_MENUBREAK, id, text.c_str());
@@ -459,11 +459,15 @@ void PluginGUI::popupMenuAdd(int menu, std::wstring text, int id, bool horizonta
 #endif
 }
 
-int PluginGUI::endPopupMenu(int menu)
+int PluginGUI::endPopupMenu(intptr_t menu)
 {
 #ifdef __APPLE__
-	(void)menu;
-	return 0;
+	if (frame == nullptr || menu == 0)
+		return 0;
+	CPoint mousePos = getPopupLocation();
+	int result = nativeMenuPopUp((void*)menu, frame->getNSView(), (float)mousePos.x, (float)mousePos.y);
+	nativeMenuDestroy((void*)menu);
+	return result;
 #else
 	if (frame != nullptr)
 	{
@@ -523,8 +527,87 @@ std::wstring PluginGUI::getInput(std::wstring caption, std::wstring defaultText)
 void PluginGUI::showDefaultControlMenu(PlugParameter* param, bool noteControlAssigned)
 {
 #ifdef __APPLE__
-	(void)param; (void)noteControlAssigned;
-	// Context menus are not implemented on macOS yet.
+	(void)noteControlAssigned;
+	if (frame == nullptr || param == nullptr)
+		return;
+
+	bool showMinMax = dynamic_cast<ParameterFloat*>(param) != nullptr || dynamic_cast<ParameterInt*>(param) != nullptr;
+	const int submen1Index = 100000;
+	const int submen2Index = 200000;
+
+	void* menu = nativeMenuCreate();
+
+	// host provided parameter menu entries
+	int n = 0;
+	PParamMenuEntry entry = 0;
+	while ((entry = (PParamMenuEntry)_plugin->PlugHost->Dispatcher(_plugin->HostTag, FHD_GetParamMenuEntry, param->index, n)) != nullptr)
+	{
+		if (entry->Name != nullptr)
+		{
+			if (strcmp(entry->Name, "-") == 0)
+				nativeMenuAddItem(menu, nullptr, 0, true, false, true);
+			else
+				nativeMenuAddItem(menu, entry->Name, DefaultMenuID + n, (entry->Flags & FHP_Disabled) == 0, (entry->Flags & FHP_Checked) != 0, false);
+		}
+		n++;
+	}
+
+	if (showMinMax)
+	{
+		nativeMenuAddItem(menu, nullptr, 0, true, false, true);
+		nativeMenuAddItem(menu, "Set Range Min", 1, true, false, false);
+		nativeMenuAddItem(menu, "Set Range Max", 2, true, false, false);
+
+		if (_plugin->HasNoteControl(param->hash))
+			nativeMenuAddItem(menu, "Unassign Note Control", 3, true, false, false);
+		else
+		{
+			void* sub1 = nativeMenuCreate();
+			nativeMenuAddItem(sub1, "Assign Full", submen1Index, true, false, false);
+			nativeMenuAddItem(sub1, "Assign Upper", submen1Index + 1, true, false, false);
+			nativeMenuAddItem(sub1, "Assign Lower", submen1Index + 2, true, false, false);
+			nativeMenuAddSubmenu(menu, sub1, "Assign Note Control 1");
+			nativeMenuDestroy(sub1);
+
+			void* sub2 = nativeMenuCreate();
+			nativeMenuAddItem(sub2, "Assign Full", submen2Index, true, false, false);
+			nativeMenuAddItem(sub2, "Assign Upper", submen2Index + 1, true, false, false);
+			nativeMenuAddItem(sub2, "Assign Lower", submen2Index + 2, true, false, false);
+			nativeMenuAddSubmenu(menu, sub2, "Assign Note Control 2");
+			nativeMenuDestroy(sub2);
+		}
+	}
+
+	PopupParameter = param->index;
+	CPoint mousePos = getPopupLocation();
+	int r = nativeMenuPopUp(menu, frame->getNSView(), (float)mousePos.x, (float)mousePos.y);
+	nativeMenuDestroy(menu);
+
+	if (r >= submen1Index)
+	{
+		int menIndex = (int)((float)r / submen1Index) - 1;
+		int menSel = r % submen1Index;
+		_plugin->AssignNoteControl(param->index, (NoteControlIndex)menIndex, (NoteControlType)menSel);
+	}
+	else if (r == 1 || r == 2)
+	{
+		std::wstring input = L"";
+		if (r == 1)
+		{
+			input = getInput(L"Enter Min Value", std::to_wstring(param->getMin()));
+			param->setMin(wcstof(input.c_str(), nullptr));
+		}
+		else
+		{
+			input = getInput(L"Enter Max Value", std::to_wstring(param->getMax()));
+			param->setMax(wcstof(input.c_str(), nullptr));
+		}
+		_plugin->ProcessParam(param->index, static_cast<int>(param->getFloat()), REC_UpdateControl);
+	}
+	else if (r == 3)
+		_plugin->AssignNoteControl(param->index, NoteControlIndex::NoControl, NoteControlType::Full);
+	else if (r)
+		_plugin->PlugHost->Dispatcher(_plugin->HostTag, FHD_ParamMenu, PopupParameter, r - DefaultMenuID);
 #else
 	if (frame != nullptr && param != nullptr)
 	{
@@ -640,8 +723,22 @@ int numCCDefaults = sizeof(kCCDefaults) / sizeof(kCCDefaults[0]);
 int PluginGUI::showDefaultCCMenu()
 {
 #ifdef __APPLE__
-	// Context menus are not implemented on macOS yet.
-	return -1;
+	if (frame == nullptr)
+		return -1;
+
+	void* menu = nativeMenuCreate();
+	for (int i = 0; i < numCCDefaults; i++)
+	{
+		char* utf8 = new char[(kCCDefaults[i].text.length() * 4) + 1];
+		platformWideToBytes(utf8, kCCDefaults[i].text.c_str(), (kCCDefaults[i].text.length() * 4) + 1);
+		nativeMenuAddItem(menu, utf8, kCCDefaults[i].cc, true, false, false);
+		delete[] utf8;
+	}
+
+	CPoint mousePos = getPopupLocation();
+	int cc = nativeMenuPopUp(menu, frame->getNSView(), (float)mousePos.x, (float)mousePos.y);
+	nativeMenuDestroy(menu);
+	return cc > 0 ? cc : -1;
 #else
 	if (frame != nullptr)
 	{

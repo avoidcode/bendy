@@ -442,7 +442,7 @@ CMouseEventResult CSpinner::onMouseDown(CPoint& where, const long& buttons)
 		ParameterStringSelection* sel = dynamic_cast<ParameterStringSelection*>(getParameter());
 		if (sel != nullptr)
 		{
-			int menu = ((PluginGUI*)getEditor())->beginPopupMenu();
+			intptr_t menu = ((PluginGUI*)getEditor())->beginPopupMenu();
 
 			for (int i = 0; i < sel->strings.size(); i++)
 			{
