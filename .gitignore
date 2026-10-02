@@ -419,3 +419,4 @@ FodyWeavers.xsd
 /resource_builder/.vs
 /dist
 /build-macos
+.DS_Store
