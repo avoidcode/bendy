@@ -279,6 +279,14 @@ HIDDEN void nsViewScrollRect (void* nsView, const CRect& src, const CPoint& dist
 }
 
 //------------------------------------------------------------------------------------
+HIDDEN void forceNSViewDisplay (void* nsView)
+{
+	NSView* view = (NSView*)nsView;
+	[view setNeedsDisplay:YES];
+	[view displayIfNeeded];
+	[view display];
+}
+
 HIDDEN void resizeNSView (void* nsView, const CRect& newSize)
 {
 	NSView* view = (NSView*)nsView;
@@ -556,6 +564,13 @@ static id VSTGUI_NSView_Init (id self, SEL _cmd, void* _frame, const void* _size
 		[self addTrackingArea: trackingArea];
 
 		[self setFocusRingType:NSFocusRingTypeNone];
+		// Ensure the view is drawn even when the frame size does not change on
+		// creation (e.g. reopening an already-expanded editor).
+		[self setNeedsDisplay:YES];
+		dispatch_async (dispatch_get_main_queue (), ^{
+			[self setNeedsDisplay:YES];
+			[self display];
+		});
 	}
 	return self;
 }

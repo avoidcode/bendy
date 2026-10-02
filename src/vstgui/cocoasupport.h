@@ -46,6 +46,7 @@ void* createNSView (CFrame* frame, const CRect& size);
 void destroyNSView (void* nsView);
 void invalidNSViewRect (void* nsView, const CRect& size);
 void resizeNSView (void* nsView, const CRect& newSize);
+void forceNSViewDisplay (void* nsView);
 void getSizeOfNSView (void* nsView, CRect* rect);
 bool nsViewGetCurrentMouseLocation (void* nsView, CPoint& where);
 void nsViewSetMouseCursor (CCursorType type);

@@ -4,6 +4,9 @@
 #include "vstcontrols_ext.h"
 #include "../resource.h"
 #include <cwchar>
+#ifdef __APPLE__
+#include "cocoasupport.h"
+#endif
 //------------------------------------------------------------------------------------
 //AEffGUIEditor* createEditor(AudioEffectX* effect)
 //{
@@ -241,7 +244,18 @@ bool PluginGUI::open(void* ptr)
 	font->forget();
 	tinyCheckbox->forget(); 
 
+#ifdef __APPLE__
+	// Some hosts only lay out their editor container in response to the plugin
+	// view's frame changing. When the editor is created at its final size (e.g.
+	// reopening an expanded editor) no change occurs, leaving the container at
+	// zero height. Nudge the size so the host resizes the container.
+	frame->setSize(1, 1);
+#endif
 	setExpanded(_plugin->getParameter(L"expanded")->getFloat() > 0.5f);
+
+#ifdef __APPLE__
+	forceNSViewDisplay(frame->getNSView());
+#endif
 
 	return true;
 
@@ -269,6 +283,7 @@ void PluginGUI::setExpanded(bool expanded)
 	frame->setBackground(background);
 	frame->setSize(background->getWidth(), background->getHeight());
 	frame->setDirty(true);
+	frame->invalid();
 
 	_plugin->PlugHost->Dispatcher(_plugin->HostTag, FHD_EditorResized, 0, 0);
 	background->forget();
